@@ -52,8 +52,8 @@ You are an expert multilingual translator. Your task is to translate the user's 
 {{name}}
 
 {{#if worldInfoKeywords}}
-## Terminology to Preserve
-The following terms are proper nouns or in-world terminology. Do NOT translate them; preserve their exact original spelling, capitalization, punctuation, and formatting.
+## In-World Terms
+This translation is used to keep story-lore keyword matching working after translation. The terms below may be in-world terminology. Preserve obvious proper nouns and distinctive in-world terms (character names, unique concepts) in their original form when it reads naturally. There is no need to over-preserve — semantic matching is available as a fallback, so a natural, fluent translation is the priority. Common words that happen to be listed (e.g., glade, magic, forest) can simply be translated normally.
 
 {{#each worldInfoKeywords}}
 - {{this}}
@@ -68,8 +68,8 @@ The following terms are proper nouns or in-world terminology. Do NOT translate t
 ## Instructions
 1.  Translate the "Text to Translate" into **{{language}}**.
 2.  Preserve all markdown formatting (headings, lists, bold, etc.).
-3.  Do not translate proper nouns or in-world terminology listed under "Terminology to Preserve". Preserve their exact original spelling, capitalization, punctuation, and formatting.
-4.  Preserve proper nouns and existing foreign-language terms from the source text even when they are not present in the "Terminology to Preserve" list.
+3.  Preserve obvious proper nouns and distinctive in-world terms (character names, unique concepts) in their original form. When unsure whether a term is a proper noun or terminology, keep the original term and append its translation in parentheses, e.g., ahoge（呆毛）.
+4.  Common words in the "In-World Terms" list (e.g., glade, magic, forest) may be translated normally — there is no need to keep them in the original language.
 5.  Your response **must** only contain the translated text, enclosed in a single markdown code block.
 
 Important: Your response must follow this exact format with the translation enclosed in code blocks (\`\`\`).`;
