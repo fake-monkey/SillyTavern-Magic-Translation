@@ -32,15 +32,12 @@
                     {{/each}}
                 </select>
 
-                <label>Reasoning Effort</label>
-                <select class="text_pole reasoning_effort" title="Lower the thinking level for translation, independent of the conversation preset">
-                    <option value="auto">Auto (use preset)</option>
-                    <option value="min">Minimum</option>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="max">Maximum</option>
-                </select>
+                <div class="flex-container">
+                    <label class="checkbox_label">
+                        <input type="checkbox" class="disable_thinking" />
+                        Disable thinking (reasoning) for translation
+                    </label>
+                </div>
 
                 <div class="title_restorable">
                     <label>Prompt Preset</label>

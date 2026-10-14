@@ -21,8 +21,8 @@ interface ExtensionSettings {
   autoMode: AutoModeOptions;
   promptPreset: string;
   promptPresets: Record<string, PromptPreset>;
-  /** Reasoning effort override for the translation model. 'auto' uses the profile preset's value. */
-  reasoningEffort: string;
+  /** When true, disables reasoning/thinking for translation requests, independent of the global setting. */
+  disableThinking: boolean;
 }
 
 interface WorldInfoEntry {
@@ -88,7 +88,7 @@ const defaultSettings: ExtensionSettings = {
       filterCodeBlock: true,
     },
   },
-  reasoningEffort: 'auto',
+  disableThinking: false,
 };
 
 // Keys for extension settings
@@ -377,11 +377,10 @@ async function initSettings() {
     settingsManager.saveSettings();
   });
 
-  const reasoningEffortElement = settingsElement.find('.reasoning_effort');
-  reasoningEffortElement.val(settings.reasoningEffort);
-  reasoningEffortElement.on('change', function () {
-    const reasoningEffort = reasoningEffortElement.val() as string;
-    settings.reasoningEffort = reasoningEffort;
+  const disableThinkingElement = settingsElement.find('.disable_thinking');
+  disableThinkingElement.prop('checked', settings.disableThinking);
+  disableThinkingElement.on('change', function () {
+    settings.disableThinking = disableThinkingElement.prop('checked');
     settingsManager.saveSettings();
   });
 }
@@ -428,7 +427,7 @@ async function translateText(
   const allExtraParams: Record<string, any> = {
     prompt: text,
     language: languageText,
-    chat: structuredClone(context.chat).slice(0, messageId).reverse(),
+    chat: structuredClone(context.chat).slice(0, messageId).slice(-3).reverse(),
     name: messageId !== undefined ? context.chat[messageId].name : name1,
     message: messageId !== undefined ? context.chat[messageId] : undefined,
     ...extraParams,
@@ -438,11 +437,9 @@ async function translateText(
     context.substituteParams(content),
   );
 
-  // Lower the thinking level for translation, independent of the conversation.
+  // Optionally disable reasoning/thinking for translation, independent of the global setting.
   const overridePayload: Record<string, any> =
-    settings.reasoningEffort && settings.reasoningEffort !== 'auto'
-      ? { reasoning_effort: settings.reasoningEffort }
-      : {};
+    settings.disableThinking ? { include_reasoning: false } : {};
 
   try {
     const response = await sendGenerateRequest(selectedProfileId, renderedPrompt, overridePayload);
