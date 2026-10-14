@@ -4,7 +4,11 @@ import { st_echo } from 'sillytavern-utils-lib/config';
 
 const MAX_TOKENS = 4096;
 
-export async function sendGenerateRequest(profileId: string, prompt: string): Promise<string | null> {
+export async function sendGenerateRequest(
+  profileId: string,
+  prompt: string,
+  overridePayload: Record<string, any> = {},
+): Promise<string | null> {
   const profile = context.extensionSettings.connectionManager!.profiles.find((p) => p.id === profileId);
   if (!profile) {
     st_echo('error', `Could not find profile with id ${profileId}`);
@@ -28,6 +32,8 @@ export async function sendGenerateRequest(profileId: string, prompt: string): Pr
       },
     ],
     MAX_TOKENS,
+    undefined,
+    overridePayload,
   )) as ExtractedData;
   return response.content;
 }

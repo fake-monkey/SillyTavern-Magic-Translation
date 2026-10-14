@@ -28,7 +28,10 @@ function protectExternalMacros(
       !firstToken ||
       HANDLEBARS_CONTROL_PREFIXES.some((prefix) => firstToken.startsWith(prefix)) ||
       firstToken.startsWith('@') ||
+      firstToken === 'this' ||
+      firstToken === '.' ||
       firstToken.startsWith('this.') ||
+      firstToken.startsWith('./') ||
       firstToken in params ||
       Handlebars.helpers[firstToken]
     ) {

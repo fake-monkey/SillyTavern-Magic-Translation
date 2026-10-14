@@ -21,6 +21,8 @@ interface ExtensionSettings {
   autoMode: AutoModeOptions;
   promptPreset: string;
   promptPresets: Record<string, PromptPreset>;
+  /** Reasoning effort override for the translation model. 'auto' uses the profile preset's value. */
+  reasoningEffort: string;
 }
 
 interface WorldInfoEntry {
@@ -49,17 +51,12 @@ You are an expert multilingual translator. Your task is to translate the user's 
 ## Perspective
 {{name}}
 
-{{#if worldInfo}}
-## Activated World Info
-The following World Info entries were activated for this response. Use them as authoritative terminology references.
+{{#if worldInfoKeywords}}
+## Terminology to Preserve
+The following terms are proper nouns or in-world terminology. Do NOT translate them; preserve their exact original spelling, capitalization, punctuation, and formatting.
 
-{{#each worldInfo}}
-### {{this.world}}{{#if this.comment}} — {{this.comment}}{{/if}}
-Primary keys: {{this.key}}
-Secondary keys: {{this.keysecondary}}
-
-{{this.content}}
-
+{{#each worldInfoKeywords}}
+- {{this}}
 {{/each}}
 {{/if}}
 
@@ -71,8 +68,8 @@ Secondary keys: {{this.keysecondary}}
 ## Instructions
 1.  Translate the "Text to Translate" into **{{language}}**.
 2.  Preserve all markdown formatting (headings, lists, bold, etc.).
-3.  Do not translate proper nouns or in-world terminology mentioned in the Activated World Info. Preserve their exact original spelling, capitalization, punctuation, and formatting.
-4.  Preserve proper nouns and existing foreign-language terms from the source text even when they are not present in the Activated World Info.
+3.  Do not translate proper nouns or in-world terminology listed under "Terminology to Preserve". Preserve their exact original spelling, capitalization, punctuation, and formatting.
+4.  Preserve proper nouns and existing foreign-language terms from the source text even when they are not present in the "Terminology to Preserve" list.
 5.  Your response **must** only contain the translated text, enclosed in a single markdown code block.
 
 Important: Your response must follow this exact format with the translation enclosed in code blocks (\`\`\`).`;
@@ -91,6 +88,7 @@ const defaultSettings: ExtensionSettings = {
       filterCodeBlock: true,
     },
   },
+  reasoningEffort: 'auto',
 };
 
 // Keys for extension settings
@@ -107,6 +105,23 @@ const settingsManager = new ExtensionSettingsManager<ExtensionSettings>(EXTENSIO
 
 const incomingTypes = [AutoModeOptions.RESPONSES, AutoModeOptions.BOTH];
 const outgoingTypes = [AutoModeOptions.INPUT, AutoModeOptions.BOTH];
+
+/**
+ * Collects the trigger keywords (primary + secondary) of the activated World Info
+ * entries into a de-duplicated list. Only the keywords are sent to the translation
+ * model, not the full entry content, to keep the request small and fast.
+ */
+function extractKeywords(worldInfo: WorldInfoEntry[]): string[] {
+  const keywords = new Set<string>();
+  for (const entry of worldInfo ?? []) {
+    for (const key of [...(entry.key ?? []), ...(entry.keysecondary ?? [])]) {
+      if (typeof key === 'string' && key.trim()) {
+        keywords.add(key.trim());
+      }
+    }
+  }
+  return Array.from(keywords);
+}
 
 async function initUI() {
   if (!context.extensionSettings.connectionManager) {
@@ -155,15 +170,16 @@ async function initUI() {
   });
 
   const settings = settingsManager.getSettings();
-  context.eventSource.on(EventNames.MESSAGE_UPDATED, async (messageId: number) => {
-    if (incomingTypes.includes(settings.autoMode)) {
-      await generateMessage(messageId, 'incomingMessage');
-      context.eventSource.emit('magic_translation_done', {
-        messageId,
-        type: 'incomingMessage',
-        auto: true,
-      });
+  // Show the display-language text (extra.display_text) in the editor instead of the internal text.
+  context.eventSource.on('message_edit_started', (data: { message?: { extra?: { display_text?: string } }; text?: string }) => {
+    const message = data?.message;
+    if (message && typeof message.extra?.display_text === 'string') {
+      data.text = message.extra.display_text;
     }
+  });
+  // After editing, translate the edited display-language text back to the internal language.
+  context.eventSource.on(EventNames.MESSAGE_EDITED, (messageId: number, previous?: { previousText?: string; previousDisplayText?: string }) => {
+    translateMessageEdit(messageId, previous);
   });
   context.eventSource.on(EventNames.IMPERSONATE_READY, async (messageId: number) => {
     if (outgoingTypes.includes(settings.autoMode)) {
@@ -360,6 +376,14 @@ async function initSettings() {
     settings.autoMode = autoMode as AutoModeOptions;
     settingsManager.saveSettings();
   });
+
+  const reasoningEffortElement = settingsElement.find('.reasoning_effort');
+  reasoningEffortElement.val(settings.reasoningEffort);
+  reasoningEffortElement.on('change', function () {
+    const reasoningEffort = reasoningEffortElement.val() as string;
+    settings.reasoningEffort = reasoningEffort;
+    settingsManager.saveSettings();
+  });
 }
 
 async function translateText(
@@ -414,8 +438,14 @@ async function translateText(
     context.substituteParams(content),
   );
 
+  // Lower the thinking level for translation, independent of the conversation.
+  const overridePayload: Record<string, any> =
+    settings.reasoningEffort && settings.reasoningEffort !== 'auto'
+      ? { reasoning_effort: settings.reasoningEffort }
+      : {};
+
   try {
-    const response = await sendGenerateRequest(selectedProfileId, renderedPrompt);
+    const response = await sendGenerateRequest(selectedProfileId, renderedPrompt, overridePayload);
     if (!response) {
       return null;
     }
@@ -476,7 +506,7 @@ async function generateMessage(
 
   const extraParams: Record<string, any> = {
     translationType: type,
-    worldInfo: type === 'incomingMessage' ? worldInfo : [],
+    worldInfoKeywords: type === 'incomingMessage' ? extractKeywords(worldInfo) : [],
   };
 
   if (message) {
@@ -540,6 +570,64 @@ async function generateMessage(
       generating = generating.filter((id) => id !== messageId);
     }
   }
+}
+
+/**
+ * Handles a message that was just edited.
+ *
+ * The editor shows `extra.display_text` (the display language), so after editing,
+ * `message.mes` holds the edited display-language text. Translate it back to the
+ * internal language and keep the edited text as `extra.display_text`.
+ *
+ * @param messageId ID of the edited message
+ * @param previous Values captured before the edit, used to roll back on failure
+ */
+async function translateMessageEdit(
+  messageId: number,
+  previous?: { previousText?: string; previousDisplayText?: string },
+) {
+  const settings = settingsManager.getSettings();
+  const message = context.chat[messageId];
+  if (!message) {
+    return;
+  }
+
+  if (typeof message.extra !== 'object' || message.extra === null) {
+    message.extra = {};
+  }
+
+  // System messages (or auto mode off with a stale translation) keep no display text.
+  if (message.is_system || (settings.autoMode === AutoModeOptions.NONE && message.extra?.display_text)) {
+    delete message.extra.display_text;
+    st_updateMessageBlock(messageId, message);
+    await context.saveChat();
+    return;
+  }
+
+  const isUser = Boolean(message.is_user);
+  const shouldTranslate = isUser
+    ? outgoingTypes.includes(settings.autoMode)
+    : incomingTypes.includes(settings.autoMode);
+  if (!shouldTranslate) {
+    return;
+  }
+
+  const editedDisplayText = message.mes;
+  const translation = await translateText(editedDisplayText, messageId, settings.internalLanguage);
+  if (typeof translation === 'string') {
+    message.extra.display_text = editedDisplayText;
+    message.mes = translation;
+  } else {
+    message.mes = previous?.previousText ?? message.mes;
+    if (previous?.previousDisplayText === undefined) {
+      delete message.extra.display_text;
+    } else {
+      message.extra.display_text = previous.previousDisplayText;
+    }
+  }
+
+  st_updateMessageBlock(messageId, message);
+  await context.saveChat();
 }
 
 function main() {
