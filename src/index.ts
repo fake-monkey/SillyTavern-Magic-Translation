@@ -23,6 +23,15 @@ interface ExtensionSettings {
   promptPresets: Record<string, PromptPreset>;
 }
 
+interface WorldInfoEntry {
+  world?: string;
+  comment?: string;
+  key?: string[];
+  keysecondary?: string[];
+  content?: string;
+  [key: string]: unknown;
+}
+
 const VERSION = '0.1.1';
 const FORMAT_VERSION = 'F_1.0';
 
@@ -40,6 +49,20 @@ You are an expert multilingual translator. Your task is to translate the user's 
 ## Perspective
 {{name}}
 
+{{#if worldInfo}}
+## Activated World Info
+The following World Info entries were activated for this response. Use them as authoritative terminology references.
+
+{{#each worldInfo}}
+### {{this.world}}{{#if this.comment}} — {{this.comment}}{{/if}}
+Primary keys: {{this.key}}
+Secondary keys: {{this.keysecondary}}
+
+{{this.content}}
+
+{{/each}}
+{{/if}}
+
 ## Text to Translate
 \`\`\`
 {{prompt}}
@@ -48,7 +71,9 @@ You are an expert multilingual translator. Your task is to translate the user's 
 ## Instructions
 1.  Translate the "Text to Translate" into **{{language}}**.
 2.  Preserve all markdown formatting (headings, lists, bold, etc.).
-3.  Your response **must** only contain the translated text, enclosed in a single markdown code block.
+3.  Do not translate proper nouns or in-world terminology mentioned in the Activated World Info. Preserve their exact original spelling, capitalization, punctuation, and formatting.
+4.  Preserve proper nouns and existing foreign-language terms from the source text even when they are not present in the Activated World Info.
+5.  Your response **must** only contain the translated text, enclosed in a single markdown code block.
 
 Important: Your response must follow this exact format with the translation enclosed in code blocks (\`\`\`).`;
 
@@ -56,7 +81,7 @@ const defaultSettings: ExtensionSettings = {
   version: VERSION,
   formatVersion: FORMAT_VERSION,
   profile: '',
-  targetLanguage: 'en',
+  targetLanguage: 'zh-CN',
   internalLanguage: 'en',
   autoMode: AutoModeOptions.NONE,
   promptPreset: 'default',
@@ -74,6 +99,10 @@ const EXTENSION_KEY = 'magicTranslation';
 // Message IDs that are currently being generated
 let generating: number[] = [];
 
+// World Info activated while constructing the current main-model prompt.
+// It is consumed by the next rendered character message and never reused.
+let pendingWorldInfo: WorldInfoEntry[] = [];
+
 const settingsManager = new ExtensionSettingsManager<ExtensionSettings>(EXTENSION_KEY, defaultSettings);
 
 const incomingTypes = [AutoModeOptions.RESPONSES, AutoModeOptions.BOTH];
@@ -86,6 +115,16 @@ async function initUI() {
   }
 
   await initSettings();
+
+  context.eventSource.on('generation_started', (_type: unknown, _params: unknown, isDryRun: boolean) => {
+    if (!isDryRun) {
+      pendingWorldInfo = [];
+    }
+  });
+
+  context.eventSource.on('world_info_activated', (entries: WorldInfoEntry[]) => {
+    pendingWorldInfo = structuredClone(entries ?? []);
+  });
 
   const showTranslateButton = $(
     `<div title="Magic Translate" class="mes_button mes_magic_translation_button fa-solid fa-globe interactable" tabindex="0"></div>`,
@@ -141,8 +180,11 @@ async function initUI() {
 
   // @ts-ignore
   context.eventSource.makeFirst(EventNames.CHARACTER_MESSAGE_RENDERED, async (messageId: number) => {
+    const worldInfo = structuredClone(pendingWorldInfo);
+    pendingWorldInfo = [];
+
     if (incomingTypes.includes(settings.autoMode)) {
-      await generateMessage(messageId, 'incomingMessage');
+      await generateMessage(messageId, 'incomingMessage', worldInfo);
       const eventData = {
         messageId,
         type: 'incomingMessage',
@@ -326,7 +368,7 @@ async function translateText(
   targetLanguage?: string,
   profileId?: string,
   preset?: string,
-  extraParams: Record<string, string> = {},
+  extraParams: Record<string, any> = {},
 ): Promise<string | null> {
   const settings = settingsManager.getSettings();
   let selectedProfileId = profileId ?? settings.profile;
@@ -397,7 +439,11 @@ async function translateText(
  * @param messageId If type is 'impersonate', messageId is the message impersonate
  * @param type userInput: User sended message, incomingMessage: Message from LLM, impersonate: Message impersonate
  */
-async function generateMessage(messageId: number, type: 'userInput' | 'incomingMessage' | 'impersonate') {
+async function generateMessage(
+  messageId: number,
+  type: 'userInput' | 'incomingMessage' | 'impersonate',
+  worldInfo: WorldInfoEntry[] = [],
+) {
   const settings = settingsManager.getSettings();
   const profileId = settings.profile;
   if (!profileId) {
@@ -428,7 +474,10 @@ async function generateMessage(messageId: number, type: 'userInput' | 'incomingM
 
   const languageCode = type === 'userInput' ? settings.internalLanguage : settings.targetLanguage;
 
-  const extraParams: Record<string, string> = {};
+  const extraParams: Record<string, any> = {
+    translationType: type,
+    worldInfo: type === 'incomingMessage' ? worldInfo : [],
+  };
 
   if (message) {
     // When a message is selected, iterate backwards from the messageId
@@ -467,6 +516,10 @@ async function generateMessage(messageId: number, type: 'userInput' | 'incomingM
 
     if (message) {
       if (type === 'userInput') {
+        if (typeof message.extra !== 'object' || message.extra === null) {
+          message.extra = {};
+        }
+        message.extra.display_text = message.mes;
         message.mes = displayText;
       } else {
         if (typeof message.extra !== 'object') {

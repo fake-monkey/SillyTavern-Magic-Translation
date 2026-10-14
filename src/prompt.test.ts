@@ -41,4 +41,20 @@ describe('renderPromptTemplate', () => {
 
     expect(rendered).toBe('translated context\nsubstituted');
   });
+
+  it('renders every activated World Info entry with its full content', () => {
+    const rendered = renderPromptTemplate(
+      '{{#each worldInfo}}[{{this.world}}/{{this.comment}}]\n{{this.content}}\n{{/each}}',
+      {
+        worldInfo: [
+          { world: 'Eldoria', comment: 'Star Key', content: 'The Star Key opens the Moonlit Archive.' },
+          { world: 'Eldoria', comment: 'Alice', content: 'Alice guards the archive at night.' },
+        ],
+      },
+      (content) => content,
+    );
+
+    expect(rendered).toContain('[Eldoria/Star Key]\nThe Star Key opens the Moonlit Archive.');
+    expect(rendered).toContain('[Eldoria/Alice]\nAlice guards the archive at night.');
+  });
 });
