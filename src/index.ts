@@ -23,6 +23,9 @@ interface ExtensionSettings {
   promptPresets: Record<string, PromptPreset>;
   /** When true, disables reasoning/thinking for translation requests, independent of the global setting. */
   disableThinking: boolean;
+  /** Sampling overrides for translation. null = use the connection profile's preset value. */
+  temperature: number | null;
+  top_p: number | null;
 }
 
 interface WorldInfoEntry {
@@ -39,7 +42,7 @@ const FORMAT_VERSION = 'F_1.0';
 
 const DEFAULT_PROMPT = `# Task: Translate Text
 
-You are an expert multilingual translator. Your task is to translate the user's text into {{language}} accurately, preserving the original markdown formatting.
+You are a decisive multilingual translator. Your task is to translate the user's text into {{language}} accurately and efficiently.
 
 ## Context: Previous Messages
 {{#each (slice chat -3)}}
@@ -53,7 +56,7 @@ You are an expert multilingual translator. Your task is to translate the user's 
 
 {{#if worldInfoKeywords}}
 ## In-World Terms
-This translation is used to keep story-lore keyword matching working after translation. The terms below may be in-world terminology. Preserve obvious proper nouns and distinctive in-world terms (character names, unique concepts) in their original form when it reads naturally. There is no need to over-preserve — semantic matching is available as a fallback, so a natural, fluent translation is the priority. Common words that happen to be listed (e.g., glade, magic, forest) can simply be translated normally.
+This translation is used to keep story-lore keyword matching working after translation. The terms below may be in-world terminology. Semantic matching is available as a fallback, so a natural, fluent translation matters more than strict preservation.
 
 {{#each worldInfoKeywords}}
 - {{this}}
@@ -67,12 +70,10 @@ This translation is used to keep story-lore keyword matching working after trans
 
 ## Instructions
 1.  Translate the "Text to Translate" into **{{language}}**.
-2.  Preserve all markdown formatting (headings, lists, bold, etc.).
+2.  This is a straightforward translation task. Translate directly and efficiently — there is no need to over-deliberate or second-guess individual word choices.
 3.  Preserve obvious proper nouns and distinctive in-world terms (character names, unique concepts) in their original form. When unsure whether a term is a proper noun or terminology, keep the original term and append its translation in parentheses, e.g., ahoge（呆毛）.
 4.  Common words in the "In-World Terms" list (e.g., glade, magic, forest) may be translated normally — there is no need to keep them in the original language.
-5.  Your response **must** only contain the translated text, enclosed in a single markdown code block.
-
-Important: Your response must follow this exact format with the translation enclosed in code blocks (\`\`\`).`;
+5.  Your response **must** only contain the translated text, enclosed in a single markdown code block. Use plain \`\`\` fences with no language tag (do not write \`\`\`markdown).`;
 
 const defaultSettings: ExtensionSettings = {
   version: VERSION,
@@ -89,6 +90,8 @@ const defaultSettings: ExtensionSettings = {
     },
   },
   disableThinking: false,
+  temperature: null,
+  top_p: null,
 };
 
 // Keys for extension settings
@@ -383,6 +386,35 @@ async function initSettings() {
     settings.disableThinking = disableThinkingElement.prop('checked');
     settingsManager.saveSettings();
   });
+
+  const temperatureElement = settingsElement.find('.temperature');
+  temperatureElement.val(settings.temperature ?? '');
+  temperatureElement.on('change', function () {
+    settings.temperature = parseSamplingNumber(temperatureElement.val());
+    settingsManager.saveSettings();
+  });
+
+  const topPElement = settingsElement.find('.top_p');
+  topPElement.val(settings.top_p ?? '');
+  topPElement.on('change', function () {
+    settings.top_p = parseSamplingNumber(topPElement.val());
+    settingsManager.saveSettings();
+  });
+}
+
+/**
+ * Parses a sampling-parameter input value into a number, or null when it should
+ * be left unset (empty/non-numeric), which means "use the profile preset value".
+ */
+function parseSamplingNumber(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value !== 'string' || value.trim() === '') {
+    return null;
+  }
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
 }
 
 async function translateText(
@@ -440,6 +472,13 @@ async function translateText(
   // Optionally disable reasoning/thinking for translation, independent of the global setting.
   const overridePayload: Record<string, any> =
     settings.disableThinking ? { include_reasoning: false } : {};
+  // Optionally override sampling parameters (temperature/top_p) for translation.
+  if (typeof settings.temperature === 'number') {
+    overridePayload.temperature = settings.temperature;
+  }
+  if (typeof settings.top_p === 'number') {
+    overridePayload.top_p = settings.top_p;
+  }
 
   try {
     const response = await sendGenerateRequest(selectedProfileId, renderedPrompt, overridePayload);
