@@ -1,12 +1,14 @@
 const path = require('path');
 const TerserPlugin = require('terser-webpack-plugin');
+const isProduction = process.env.NODE_ENV === 'production';
 
 module.exports = {
-    mode: process.env.NODE_ENV === 'production' ? 'production' : 'development',
+    mode: isProduction ? 'production' : 'development',
     entry: path.join(__dirname, 'src/index.ts'),
     output: {
         path: path.join(__dirname, 'dist/'),
         filename: 'index.js',
+        devtoolNamespace: 'sillytavern-magic-translation',
         library: {
             type: 'module'
         }
@@ -31,14 +33,14 @@ module.exports = {
             '.js': ['.ts', '.js']
         }
     },
-    devtool: process.env.NODE_ENV === 'production' ? false : 'source-map',
+    devtool: isProduction ? false : 'source-map',
     module: {
         rules: [
             {
                 test: /\.(ts|tsx|js|jsx)$/,
                 exclude: /node_modules/,
                 use: [
-                    {
+                    ...(isProduction ? [{
                         loader: 'babel-loader',
                         options: {
                             cacheDirectory: true,
@@ -47,11 +49,11 @@ module.exports = {
                                 '@babel/preset-typescript',
                             ],
                         },
-                    },
+                    }] : []),
                     {
                         loader: 'ts-loader',
                         options: {
-                            transpileOnly: process.env.NODE_ENV !== 'production',
+                            transpileOnly: !isProduction,
                         },
                     },
                 ],
