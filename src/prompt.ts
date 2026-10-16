@@ -11,9 +11,11 @@ interface TranslationChatMessage {
 
 export const DEFAULT_PROMPT = `# Task: Translate Text
 
-You are a decisive multilingual translator. Your task is to translate the user's text into {{language}} accurately and efficiently.
+You are translating the newest message in an ongoing conversation into {{language}}. Keep the translation natural and consistent with the conversation.
 
-## Context: Previous Messages
+## Reference: Previous Translations
+The following are target-language versions of earlier messages in the same conversation. Use them only as light context for names, tone, relationships, and continuity.
+
 {{#each (slice chat -3)}}
 **Message {{add @index 1}}:**
 > {{this.name}}: {{this.targetText}}
@@ -43,8 +45,6 @@ This translation is used to keep story-lore keyword matching working after trans
 3.  Preserve obvious proper nouns and distinctive in-world terms (character names, unique concepts) in their original form. When unsure whether a term is a proper noun or terminology, keep the original term and append its translation in parentheses, e.g., ahoge（呆毛）.
 4.  Common words in the "In-World Terms" list (e.g., glade, magic, forest) may be translated normally — there is no need to keep them in the original language.
 5.  Your response **must** only contain the translated text, enclosed in a single markdown code block. Use plain \`\`\` fences with no language tag (do not write \`\`\`markdown).`;
-
-export const LEGACY_DEFAULT_PROMPT = DEFAULT_PROMPT.replace('{{this.targetText}}', '{{this.mes}}');
 
 /**
  * Adds the text that best matches the current translation target to each

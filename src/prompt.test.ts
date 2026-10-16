@@ -84,6 +84,11 @@ describe('renderPromptTemplate', () => {
     );
 
     expect(rendered).toContain('Translate the "Text to Translate" into **Simplified Chinese**.');
+    expect(rendered).toContain(
+      'You are translating the newest message in an ongoing conversation into Simplified Chinese.',
+    );
+    expect(rendered).toContain('## Reference: Previous Translations');
+    expect(rendered).toContain('Use them only as light context for names, tone, relationships, and continuity.');
     expect(rendered).toContain('> Alice: 她找到了星之钥。');
     expect(rendered).toContain('The Star Key opened the gate.');
     expect(rendered).toContain('- Star Key');

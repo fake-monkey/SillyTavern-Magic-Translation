@@ -8,7 +8,6 @@ import { languageCodes } from './types/types.js';
 import {
   addTargetText,
   DEFAULT_PROMPT,
-  LEGACY_DEFAULT_PROMPT,
   renderPromptTemplate,
   type TranslationTargetSide,
 } from './prompt.js';
@@ -805,11 +804,6 @@ if (!importCheck()) {
     .initializeSettings()
     .then((result) => {
       const settings = settingsManager.getSettings();
-      const defaultPreset = settings.promptPresets.default;
-      if (defaultPreset?.content === LEGACY_DEFAULT_PROMPT) {
-        defaultPreset.content = DEFAULT_PROMPT;
-        settingsManager.saveSettings();
-      }
       // Handle migration from old format
       if (result.oldSettings && !result.oldSettings.promptPresets) {
         const oldTemplate = result.oldSettings.template;
