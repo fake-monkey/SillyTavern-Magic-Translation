@@ -32,11 +32,39 @@
                     {{/each}}
                 </select>
 
-                <div class="flex-container">
-                    <label class="checkbox_label">
-                        <input type="checkbox" class="disable_thinking" />
-                        Disable thinking (reasoning) for translation
+                <div class="range-block">
+                    <label class="checkbox_label widthFreeExpand">
+                        <input type="checkbox" class="request_reasoning" />
+                        <span data-i18n="Request model reasoning">Request model reasoning</span>
                     </label>
+                    <div class="toggle-description justifyLeft marginBot5">
+                        <span data-i18n="Allows the model to return its thinking process.">
+                            Allows the model to return its thinking process.
+                        </span>
+                    </div>
+                </div>
+
+                <div class="flex-container flexFlowColumn wide100p textAlignCenter marginTop10">
+                    <div class="flex-container oneline-dropdown">
+                        <label>
+                            <span data-i18n="Reasoning Effort">Reasoning Effort</span>
+                        </label>
+                        <select class="reasoning_effort">
+                            <option data-i18n="openai_reasoning_effort_auto" value="auto">Auto</option>
+                            <option data-i18n="openai_reasoning_effort_minimum" value="min">Minimum</option>
+                            <option data-i18n="openai_reasoning_effort_low" value="low">Low</option>
+                            <option data-i18n="openai_reasoning_effort_medium" value="medium">Medium</option>
+                            <option data-i18n="openai_reasoning_effort_high" value="high">High</option>
+                            <option data-i18n="openai_reasoning_effort_maximum" value="max">Maximum</option>
+                        </select>
+                        <div
+                            class="toggle-description justifyLeft marginBot5"
+                            data-i18n="OpenAI-compatible effort levels vary by model. Minimum and maximum may use model-specific aliases. Auto does not send an effort level."
+                        >
+                            OpenAI-compatible effort levels vary by model. Minimum and maximum may use model-specific
+                            aliases. Auto does not send an effort level.
+                        </div>
+                    </div>
                 </div>
 
                 <label>Temperature (empty = use profile preset)</label>

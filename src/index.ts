@@ -11,6 +11,7 @@ import {
   renderPromptTemplate,
   type TranslationTargetSide,
 } from './prompt.js';
+import { buildReasoningOverride, type TranslationReasoningEffort } from './reasoning.js';
 
 interface PromptPreset {
   content: string;
@@ -26,8 +27,9 @@ interface ExtensionSettings {
   autoMode: AutoModeOptions;
   promptPreset: string;
   promptPresets: Record<string, PromptPreset>;
-  /** When true, disables reasoning/thinking for translation requests, independent of the global setting. */
-  disableThinking: boolean;
+  /** Reasoning controls dedicated to translation requests. */
+  requestReasoning: boolean;
+  translationReasoningEffort: TranslationReasoningEffort;
   /** Sampling overrides for translation. null = use the connection profile's preset value. */
   temperature: number | null;
   top_p: number | null;
@@ -68,7 +70,8 @@ const defaultSettings: ExtensionSettings = {
       filterCodeBlock: true,
     },
   },
-  disableThinking: false,
+  requestReasoning: false,
+  translationReasoningEffort: 'auto',
   temperature: null,
   top_p: null,
 };
@@ -364,10 +367,17 @@ async function initSettings() {
     settingsManager.saveSettings();
   });
 
-  const disableThinkingElement = settingsElement.find('.disable_thinking');
-  disableThinkingElement.prop('checked', settings.disableThinking);
-  disableThinkingElement.on('change', function () {
-    settings.disableThinking = disableThinkingElement.prop('checked');
+  const requestReasoningElement = settingsElement.find('.request_reasoning');
+  requestReasoningElement.prop('checked', settings.requestReasoning);
+  requestReasoningElement.on('change', function () {
+    settings.requestReasoning = requestReasoningElement.prop('checked');
+    settingsManager.saveSettings();
+  });
+
+  const reasoningEffortElement = settingsElement.find('.reasoning_effort');
+  reasoningEffortElement.val(settings.translationReasoningEffort);
+  reasoningEffortElement.on('change', function () {
+    settings.translationReasoningEffort = reasoningEffortElement.val() as TranslationReasoningEffort;
     settingsManager.saveSettings();
   });
 
@@ -449,9 +459,14 @@ async function translateText(
     context.substituteParams(content),
   );
 
-  // Optionally disable reasoning/thinking for translation, independent of the global setting.
-  const overridePayload: Record<string, any> =
-    settings.disableThinking ? { include_reasoning: false } : {};
+  const selectedProfile = context.extensionSettings.connectionManager?.profiles.find(
+    (profile: any) => profile.id === selectedProfileId,
+  );
+  const overridePayload: Record<string, any> = buildReasoningOverride(
+    settings.requestReasoning,
+    settings.translationReasoningEffort,
+    selectedProfile?.api === 'deepseek',
+  );
   // Optionally override sampling parameters (temperature/top_p) for translation.
   if (typeof settings.temperature === 'number') {
     overridePayload.temperature = settings.temperature;
