@@ -12,6 +12,8 @@ import {
   type TranslationTargetSide,
 } from './prompt.js';
 import { buildReasoningOverride, type TranslationReasoningEffort } from './reasoning.js';
+import { COMMON_ENGLISH_WORDS } from './common-words.js';
+import { extractProtectedTerms, type WorldInfoEntry } from './world-info-terms.js';
 
 interface PromptPreset {
   content: string;
@@ -33,15 +35,6 @@ interface ExtensionSettings {
   /** Sampling overrides for translation. null = use the connection profile's preset value. */
   temperature: number | null;
   top_p: number | null;
-}
-
-interface WorldInfoEntry {
-  world?: string;
-  comment?: string;
-  key?: string[];
-  keysecondary?: string[];
-  content?: string;
-  [key: string]: unknown;
 }
 
 interface TranslateTextOptions {
@@ -90,23 +83,6 @@ const settingsManager = new ExtensionSettingsManager<ExtensionSettings>(EXTENSIO
 
 const incomingTypes = [AutoModeOptions.RESPONSES, AutoModeOptions.BOTH];
 const outgoingTypes = [AutoModeOptions.INPUT, AutoModeOptions.BOTH];
-
-/**
- * Collects the trigger keywords (primary + secondary) of the activated World Info
- * entries into a de-duplicated list. Only the keywords are sent to the translation
- * model, not the full entry content, to keep the request small and fast.
- */
-function extractKeywords(worldInfo: WorldInfoEntry[]): string[] {
-  const keywords = new Set<string>();
-  for (const entry of worldInfo ?? []) {
-    for (const key of [...(entry.key ?? []), ...(entry.keysecondary ?? [])]) {
-      if (typeof key === 'string' && key.trim()) {
-        keywords.add(key.trim());
-      }
-    }
-  }
-  return Array.from(keywords);
-}
 
 async function initUI() {
   if (!context.extensionSettings.connectionManager) {
@@ -537,7 +513,10 @@ async function generateMessage(
 
   const extraParams: Record<string, any> = {
     translationType: type,
-    worldInfoKeywords: type === 'incomingMessage' ? extractKeywords(worldInfo) : [],
+    protectedTerms:
+      type === 'incomingMessage'
+        ? extractProtectedTerms(message?.mes ?? '', worldInfo, COMMON_ENGLISH_WORDS)
+        : [],
   };
 
   if (message) {

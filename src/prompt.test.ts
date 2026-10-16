@@ -58,16 +58,23 @@ describe('renderPromptTemplate', () => {
     expect(rendered).toBe('translated context\nsubstituted');
   });
 
-  it('renders extracted World Info keywords as a preserve list', () => {
+  it('renders protected World Info terms as strict untranslated terms', () => {
     const rendered = renderPromptTemplate(
-      '{{#each worldInfoKeywords}}- {{this}}\n{{/each}}',
+      DEFAULT_PROMPT,
       {
-        worldInfoKeywords: ['Star Key', 'Alice'],
+        language: 'Simplified Chinese',
+        prompt: 'The Star Key opened the gate.',
+        name: 'Alice',
+        chat: [],
+        protectedTerms: ['Star Key', 'Alice'],
       },
       (content) => content,
     );
 
-    expect(rendered).toBe('- Star Key\n- Alice\n');
+    expect(rendered).toContain('## Terms to Keep Untranslated');
+    expect(rendered).toContain('- Star Key\n- Alice');
+    expect(rendered).toContain('Preserve every listed term exactly as written');
+    expect(rendered).toContain('Do not translate, transliterate, respell, recapitalize, or annotate those terms.');
   });
 
   it('renders the real default prompt with target language, target-side history, text, and World Info terms', () => {
@@ -78,7 +85,7 @@ describe('renderPromptTemplate', () => {
         prompt: 'The Star Key opened the gate.',
         name: 'Alice',
         chat: [{ name: 'Alice', targetText: '她找到了星之钥。' }],
-        worldInfoKeywords: ['Star Key'],
+        protectedTerms: ['Star Key'],
       },
       (content) => content,
     );

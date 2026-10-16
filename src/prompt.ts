@@ -25,11 +25,11 @@ The following are target-language versions of earlier messages in the same conve
 ## Perspective
 {{name}}
 
-{{#if worldInfoKeywords}}
-## In-World Terms
-This translation is used to keep story-lore keyword matching working after translation. The terms below may be in-world terminology. Semantic matching is available as a fallback, so a natural, fluent translation matters more than strict preservation.
+{{#if protectedTerms}}
+## Terms to Keep Untranslated
+The following terms occur verbatim in the text and are established in-world terminology. Preserve every listed term exactly as written: do not translate it, transliterate it, change its spelling or capitalization, or add a parenthetical explanation.
 
-{{#each worldInfoKeywords}}
+{{#each protectedTerms}}
 - {{this}}
 {{/each}}
 {{/if}}
@@ -42,9 +42,8 @@ This translation is used to keep story-lore keyword matching working after trans
 ## Instructions
 1.  Translate the "Text to Translate" into **{{language}}**.
 2.  This is a straightforward translation task. Translate directly and efficiently — there is no need to over-deliberate or second-guess individual word choices.
-3.  Preserve obvious proper nouns and distinctive in-world terms (character names, unique concepts) in their original form. When unsure whether a term is a proper noun or terminology, keep the original term and append its translation in parentheses, e.g., ahoge（呆毛）.
-4.  Common words in the "In-World Terms" list (e.g., glade, magic, forest) may be translated normally — there is no need to keep them in the original language.
-5.  Your response **must** only contain the translated text, enclosed in a single markdown code block. Use plain \`\`\` fences with no language tag (do not write \`\`\`markdown).`;
+3.  Preserve every term in "Terms to Keep Untranslated" exactly as written. Do not translate, transliterate, respell, recapitalize, or annotate those terms.
+4.  Your response **must** only contain the translated text, enclosed in a single markdown code block. Use plain \`\`\` fences with no language tag (do not write \`\`\`markdown).`;
 
 /**
  * Adds the text that best matches the current translation target to each
