@@ -5,7 +5,13 @@ import { EventNames } from 'sillytavern-utils-lib/types';
 import { AutoModeOptions } from 'sillytavern-utils-lib/types/translate';
 import { name1, st_echo } from 'sillytavern-utils-lib/config';
 import { languageCodes } from './types/types.js';
-import { renderPromptTemplate } from './prompt.js';
+import {
+  addTargetText,
+  DEFAULT_PROMPT,
+  LEGACY_DEFAULT_PROMPT,
+  renderPromptTemplate,
+  type TranslationTargetSide,
+} from './prompt.js';
 
 interface PromptPreset {
   content: string;
@@ -37,43 +43,17 @@ interface WorldInfoEntry {
   [key: string]: unknown;
 }
 
+interface TranslateTextOptions {
+  targetSide: TranslationTargetSide;
+  messageId?: number;
+  targetLanguage?: string;
+  profileId?: string;
+  preset?: string;
+  extraParams?: Record<string, any>;
+}
+
 const VERSION = '0.1.1';
 const FORMAT_VERSION = 'F_1.0';
-
-const DEFAULT_PROMPT = `# Task: Translate Text
-
-You are a decisive multilingual translator. Your task is to translate the user's text into {{language}} accurately and efficiently.
-
-## Context: Previous Messages
-{{#each (slice chat -3)}}
-**Message {{add @index 1}}:**
-> {{this.name}}: {{this.mes}}
-
-{{/each}}
-
-## Perspective
-{{name}}
-
-{{#if worldInfoKeywords}}
-## In-World Terms
-This translation is used to keep story-lore keyword matching working after translation. The terms below may be in-world terminology. Semantic matching is available as a fallback, so a natural, fluent translation matters more than strict preservation.
-
-{{#each worldInfoKeywords}}
-- {{this}}
-{{/each}}
-{{/if}}
-
-## Text to Translate
-\`\`\`
-{{prompt}}
-\`\`\`
-
-## Instructions
-1.  Translate the "Text to Translate" into **{{language}}**.
-2.  This is a straightforward translation task. Translate directly and efficiently — there is no need to over-deliberate or second-guess individual word choices.
-3.  Preserve obvious proper nouns and distinctive in-world terms (character names, unique concepts) in their original form. When unsure whether a term is a proper noun or terminology, keep the original term and append its translation in parentheses, e.g., ahoge（呆毛）.
-4.  Common words in the "In-World Terms" list (e.g., glade, magic, forest) may be translated normally — there is no need to keep them in the original language.
-5.  Your response **must** only contain the translated text, enclosed in a single markdown code block. Use plain \`\`\` fences with no language tag (do not write \`\`\`markdown).`;
 
 const defaultSettings: ExtensionSettings = {
   version: VERSION,
@@ -184,6 +164,8 @@ async function initUI() {
   context.eventSource.on(EventNames.MESSAGE_EDITED, (messageId: number, previous?: { previousText?: string; previousDisplayText?: string }) => {
     translateMessageEdit(messageId, previous);
   });
+  // TODO: IMPERSONATE_READY emits generated text, not a numeric message ID. Keep the
+  // legacy handler unchanged until the low-use impersonate path is redesigned.
   context.eventSource.on(EventNames.IMPERSONATE_READY, async (messageId: number) => {
     if (outgoingTypes.includes(settings.autoMode)) {
       await generateMessage(messageId, 'impersonate');
@@ -250,7 +232,10 @@ async function initUI() {
       }
 
       const settings = settingsManager.getSettings();
-      const translatedText = await translateText(textToTranslate, undefined, settings.internalLanguage);
+      const translatedText = await translateText(textToTranslate, {
+        targetSide: 'internal',
+        targetLanguage: settings.internalLanguage,
+      });
 
       if (translatedText) {
         if (isSelection) {
@@ -419,11 +404,7 @@ function parseSamplingNumber(value: unknown): number | null {
 
 async function translateText(
   text: string,
-  messageId?: number,
-  targetLanguage?: string,
-  profileId?: string,
-  preset?: string,
-  extraParams: Record<string, any> = {},
+  { targetSide, messageId, targetLanguage, profileId, preset, extraParams = {} }: TranslateTextOptions,
 ): Promise<string | null> {
   const settings = settingsManager.getSettings();
   let selectedProfileId = profileId ?? settings.profile;
@@ -459,7 +440,7 @@ async function translateText(
   const allExtraParams: Record<string, any> = {
     prompt: text,
     language: languageText,
-    chat: structuredClone(context.chat).slice(0, messageId).slice(-3).reverse(),
+    chat: addTargetText(structuredClone(context.chat).slice(0, messageId), targetSide),
     name: messageId !== undefined ? context.chat[messageId].name : name1,
     message: messageId !== undefined ? context.chat[messageId] : undefined,
     ...extraParams,
@@ -567,14 +548,12 @@ async function generateMessage(
     generating.push(messageId);
   }
   try {
-    const displayText = await translateText(
-      message?.mes ?? (messageId as unknown as string),
+    const displayText = await translateText(message?.mes ?? (messageId as unknown as string), {
+      targetSide: type === 'userInput' ? 'internal' : 'display',
       messageId,
-      languageCode,
-      undefined, // Use default profile from settings
-      undefined, // Use default preset from settings
+      targetLanguage: languageCode,
       extraParams,
-    );
+    });
 
     if (!displayText) {
       return;
@@ -649,7 +628,11 @@ async function translateMessageEdit(
   }
 
   const editedDisplayText = message.mes;
-  const translation = await translateText(editedDisplayText, messageId, settings.internalLanguage);
+  const translation = await translateText(editedDisplayText, {
+    targetSide: 'internal',
+    messageId,
+    targetLanguage: settings.internalLanguage,
+  });
   if (typeof translation === 'string') {
     message.extra.display_text = editedDisplayText;
     message.mes = translation;
@@ -737,7 +720,12 @@ function main() {
         }
 
         try {
-          const translatedText = await translateText(value, undefined, args.target, args.profile, args.preset);
+          const translatedText = await translateText(value, {
+            targetSide: 'display',
+            targetLanguage: args.target,
+            profileId: args.profile,
+            preset: args.preset,
+          });
           return translatedText ?? 'Translation failed.';
         } catch (error) {
           console.error(error);
@@ -817,6 +805,11 @@ if (!importCheck()) {
     .initializeSettings()
     .then((result) => {
       const settings = settingsManager.getSettings();
+      const defaultPreset = settings.promptPresets.default;
+      if (defaultPreset?.content === LEGACY_DEFAULT_PROMPT) {
+        defaultPreset.content = DEFAULT_PROMPT;
+        settingsManager.saveSettings();
+      }
       // Handle migration from old format
       if (result.oldSettings && !result.oldSettings.promptPresets) {
         const oldTemplate = result.oldSettings.template;

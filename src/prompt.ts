@@ -1,5 +1,66 @@
 import * as Handlebars from 'handlebars';
 
+export type TranslationTargetSide = 'internal' | 'display';
+
+interface TranslationChatMessage {
+  mes: string;
+  extra?: {
+    display_text?: unknown;
+  };
+}
+
+export const DEFAULT_PROMPT = `# Task: Translate Text
+
+You are a decisive multilingual translator. Your task is to translate the user's text into {{language}} accurately and efficiently.
+
+## Context: Previous Messages
+{{#each (slice chat -3)}}
+**Message {{add @index 1}}:**
+> {{this.name}}: {{this.targetText}}
+
+{{/each}}
+
+## Perspective
+{{name}}
+
+{{#if worldInfoKeywords}}
+## In-World Terms
+This translation is used to keep story-lore keyword matching working after translation. The terms below may be in-world terminology. Semantic matching is available as a fallback, so a natural, fluent translation matters more than strict preservation.
+
+{{#each worldInfoKeywords}}
+- {{this}}
+{{/each}}
+{{/if}}
+
+## Text to Translate
+\`\`\`
+{{prompt}}
+\`\`\`
+
+## Instructions
+1.  Translate the "Text to Translate" into **{{language}}**.
+2.  This is a straightforward translation task. Translate directly and efficiently — there is no need to over-deliberate or second-guess individual word choices.
+3.  Preserve obvious proper nouns and distinctive in-world terms (character names, unique concepts) in their original form. When unsure whether a term is a proper noun or terminology, keep the original term and append its translation in parentheses, e.g., ahoge（呆毛）.
+4.  Common words in the "In-World Terms" list (e.g., glade, magic, forest) may be translated normally — there is no need to keep them in the original language.
+5.  Your response **must** only contain the translated text, enclosed in a single markdown code block. Use plain \`\`\` fences with no language tag (do not write \`\`\`markdown).`;
+
+export const LEGACY_DEFAULT_PROMPT = DEFAULT_PROMPT.replace('{{this.targetText}}', '{{this.mes}}');
+
+/**
+ * Adds the text that best matches the current translation target to each
+ * history entry without changing the stored SillyTavern message fields.
+ */
+export function addTargetText<T extends TranslationChatMessage>(
+  messages: T[],
+  targetSide: TranslationTargetSide,
+): Array<T & { targetText: string }> {
+  return messages.map((message) => {
+    const displayText = message.extra?.display_text;
+    const targetText = targetSide === 'display' && typeof displayText === 'string' ? displayText : message.mes;
+    return { ...message, targetText };
+  });
+}
+
 if (!Handlebars.helpers['slice']) {
   Handlebars.registerHelper('slice', function (context, count) {
     if (!Array.isArray(context)) return [];
