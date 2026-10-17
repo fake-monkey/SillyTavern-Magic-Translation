@@ -14,6 +14,12 @@ import {
 import { buildReasoningOverride, type TranslationReasoningEffort } from './reasoning.js';
 import { COMMON_ENGLISH_WORDS } from './common-words.js';
 import { extractProtectedTerms, type WorldInfoEntry } from './world-info-terms.js';
+import {
+  DEFAULT_MAX_TOKENS_MULTIPLIER,
+  calculateTranslationMaxTokens,
+  normalizeMaxTokensMultiplier,
+  resolveMaxResponseTokens,
+} from './max-tokens.js';
 
 interface PromptPreset {
   content: string;
@@ -35,6 +41,8 @@ interface ExtensionSettings {
   /** Sampling overrides for translation. null = use the connection profile's preset value. */
   temperature: number | null;
   top_p: number | null;
+  /** Multiplier applied to SillyTavern's current main-chat response length. */
+  maxTokensMultiplier: number;
 }
 
 interface TranslateTextOptions {
@@ -67,6 +75,7 @@ const defaultSettings: ExtensionSettings = {
   translationReasoningEffort: 'auto',
   temperature: null,
   top_p: null,
+  maxTokensMultiplier: DEFAULT_MAX_TOKENS_MULTIPLIER,
 };
 
 // Keys for extension settings
@@ -370,6 +379,19 @@ async function initSettings() {
     settings.top_p = parseSamplingNumber(topPElement.val());
     settingsManager.saveSettings();
   });
+
+  const maxTokensMultiplierElement = settingsElement.find('.max_tokens_multiplier');
+  const normalizedMaxTokensMultiplier = normalizeMaxTokensMultiplier(settings.maxTokensMultiplier);
+  if (normalizedMaxTokensMultiplier !== settings.maxTokensMultiplier) {
+    settings.maxTokensMultiplier = normalizedMaxTokensMultiplier;
+    settingsManager.saveSettings();
+  }
+  maxTokensMultiplierElement.val(settings.maxTokensMultiplier);
+  maxTokensMultiplierElement.on('change', function () {
+    settings.maxTokensMultiplier = normalizeMaxTokensMultiplier(maxTokensMultiplierElement.val());
+    maxTokensMultiplierElement.val(settings.maxTokensMultiplier);
+    settingsManager.saveSettings();
+  });
 }
 
 /**
@@ -385,6 +407,13 @@ function parseSamplingNumber(value: unknown): number | null {
   }
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
+}
+
+function getCurrentMaxResponseTokens(): number {
+  const mainApi = (context as typeof context & { mainApi?: string }).mainApi ?? 'unknown';
+  const configuredValue =
+    mainApi === 'openai' ? context.chatCompletionSettings.openai_max_tokens : $('#amount_gen_counter').val();
+  return resolveMaxResponseTokens(configuredValue, mainApi);
 }
 
 async function translateText(
@@ -452,7 +481,8 @@ async function translateText(
   }
 
   try {
-    const response = await sendGenerateRequest(selectedProfileId, renderedPrompt, overridePayload);
+    const maxTokens = calculateTranslationMaxTokens(getCurrentMaxResponseTokens(), settings.maxTokensMultiplier);
+    const response = await sendGenerateRequest(selectedProfileId, renderedPrompt, maxTokens, overridePayload);
     if (!response) {
       return null;
     }

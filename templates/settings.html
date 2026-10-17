@@ -87,6 +87,19 @@
                     placeholder="Use profile preset"
                 />
 
+                <label>Max Response Length Multiplier</label>
+                <input
+                    type="number"
+                    class="text_pole max_tokens_multiplier"
+                    step="0.1"
+                    min="0.1"
+                    max="4"
+                    value="1"
+                />
+                <div class="toggle-description justifyLeft marginBot5">
+                    Translation limit = current Tavern response length × multiplier.
+                </div>
+
                 <div class="title_restorable">
                     <label>Prompt Preset</label>
                 </div>
